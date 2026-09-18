@@ -1,5 +1,22 @@
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
+
+
+def _load_dotenv() -> None:
+    """Minimal .env loader (values already in the environment win)."""
+    path = Path(os.getenv("GRIDWISE_ENV_FILE", Path(__file__).resolve().parents[1] / ".env"))
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
 
 
 def _split(value: str) -> list[str]:
