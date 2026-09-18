@@ -102,7 +102,7 @@ curl -s http://localhost:8000/health
 ```
 
 - Exposed port: `8000` (override with `-e PORT=...` and matching `-p`); binds `0.0.0.0`.
-- Pinned digest: `ghcr.io/mikealvarez9999/gridwiseapi@sha256:<DIGEST>` (see the `docker` workflow summary of the submitted commit).
+- Pinned digest (commit 56038a3): `ghcr.io/mikealvarez9999/gridwiseapi@sha256:bdf70e903e8f5d25584769349889de251b7f0e486e9017699038307f92074974` — every push updates `:latest`; the `docker` workflow summary lists the digest for each commit.
 - The image is built and pushed by `.github/workflows/docker.yml`, which also starts the pushed image and verifies
   `/health`, one public sample (`LLM_MOCK=1`) and the 400 path before the job passes.
 - Build locally instead: `docker build -t gridwiseapi . && docker run --rm -p 8000:8000 -e GROQ_API_KEYS=gsk_... gridwiseapi`
