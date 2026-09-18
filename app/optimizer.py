@@ -87,6 +87,29 @@ def solve(hours: list[HourEntry], battery: Battery, cons: HourlyConstraints) -> 
     return _build_plan(demand, eff_solar, tariff, battery, x[S:S + H], x[C:C + H], x[D:D + H])
 
 
+def infeasibility_reason(hours: list[HourEntry], battery: Battery, cons: HourlyConstraints) -> str | None:
+    """Explain why no schedule can satisfy `cons`, for the cases that are provable per hour.
+
+    Returns None when infeasibility is only detectable by the LP (e.g. interacting windows).
+    """
+    for h in range(H):
+        if cons.min_energy[h] > battery.capacity_kwh:
+            return (f"minimum_battery_reserve of {cons.min_energy[h]:g} kWh at hour {h} exceeds "
+                    f"the battery capacity of {battery.capacity_kwh:g} kWh")
+    for h in range(H):
+        cap = cons.max_grid[h]
+        if cap is None:
+            continue
+        eff_solar = hours[h].solar_kwh * cons.solar_factor[h]
+        discharge = battery.max_discharge_kwh_per_hour if cons.discharge_allowed[h] else 0.0
+        min_grid = max(0.0, hours[h].demand_kwh - eff_solar - discharge)
+        if min_grid > cap + 1e-6:
+            return (f"hour {h} needs at least {min_grid:g} kWh from the grid "
+                    f"(demand {hours[h].demand_kwh:g} - usable solar {eff_solar:g} - max discharge {discharge:g}) "
+                    f"but the grid-import cap is {cap:g} kWh")
+    return None
+
+
 def _build_plan(demand, eff_solar, tariff, battery: Battery, s, c, d) -> PlanResult:
     plan: list[HourlyPlanEntry] = []
     energy = battery.initial_energy_kwh

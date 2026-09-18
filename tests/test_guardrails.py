@@ -39,13 +39,20 @@ def test_no_op_forces_null_adjustment_and_false():
     _entry(note_index=3),
     _entry(directive_type="solar_reduction", structured_adjustment={"hours": [1], "factor": 1.5}),
     _entry(directive_type="solar_reduction", structured_adjustment={"hours": [1]}),
-    _entry(directive_type="minimum_battery_reserve", structured_adjustment={"hours": [1], "minimum_energy_kwh": 250}),
+    _entry(directive_type="minimum_battery_reserve", structured_adjustment={"hours": [1], "minimum_energy_kwh": -5}),
     _entry(directive_type="max_grid_window", structured_adjustment={"hours": [1], "max_grid_kwh": -1}),
     _entry(directive_type="max_grid_window", structured_adjustment={"hours": [1], "max_grid_kwh": "150"}),
 ])
 def test_rejects_invalid(bad):
     with pytest.raises(GuardrailError):
         validate_entry(bad, 2, BAT)
+
+
+def test_reserve_above_capacity_is_kept_verbatim():
+    """Physically impossible reserves are rejected later as infeasible, not silently clamped."""
+    e = validate_entry(_entry(directive_type="minimum_battery_reserve",
+                              structured_adjustment={"hours": [1], "minimum_energy_kwh": 250}), 1, BAT)
+    assert e.structured_adjustment == {"hours": [1], "minimum_energy_kwh": 250}
 
 
 def test_float_integer_hours_accepted():

@@ -18,6 +18,10 @@ class SemanticError(ValueError):
     """Well-formed request that cannot describe a valid scenario (HTTP 422)."""
 
 
+class InfeasibleError(ValueError):
+    """Valid scenario whose interpreted directives admit no 24-hour schedule (HTTP 422)."""
+
+
 def _finite_non_negative(v: float, name: str) -> float:
     if not math.isfinite(v):
         raise ValueError(f"{name} must be finite")

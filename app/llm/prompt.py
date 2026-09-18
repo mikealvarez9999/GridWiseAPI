@@ -16,7 +16,7 @@ Rules:
 1. no_op if the note is not clearly about solar availability, battery charge/discharge availability, battery reserve level, or a grid-import cap for today. Demand/load, tariff/price, occupancy, events, admin items, other days/weeks -> no_op (no directive exists for them). Never invent a type or a number that is not in the note or battery context.
 2. Windows are whole hours, start-inclusive, end-EXCLUSIVE for every phrasing (to/until/between/through/dash): 1 PM to 3 PM -> [13,14]; 13:00-15:00 -> [13,14]; 6 PM until 9 PM -> [18,19,20]; single hour "at 3 PM" -> [15]. noon=12, midnight=0. Bare numbers without AM/PM: pick the reading that fits the activity (solar/PV/panels happen in daylight, so "from one until three" -> [13,14]; evening/peak feeder limits are PM). Hours ascending, unique, 0-23; windows past midnight end at 23.
 3. factor = usable fraction REMAINING, 0..1: "drops to 20%", "one-fifth of normal" -> 0.2; "80% reduction", "drops by 80%" -> 0.2; "half" -> 0.5; "a third" -> 0.3333; "offline"/"no output" -> 0.
-4. Reserve: absolute kWh, or percentage-of-battery * capacity_kwh from the battery context (never above capacity).
+4. Reserve: absolute kWh, or percentage-of-battery * capacity_kwh from the battery context. Report the stated value even if it exceeds capacity; do not clamp.
 5. Grid cap: the stated per-hour import limit (kW counts as kWh per hour): "must not exceed", "at or below", "cap", "no more than".
 6. explanation: one short sentence.
 

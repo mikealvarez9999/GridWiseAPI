@@ -123,15 +123,69 @@ def test_unordered_hours_are_accepted(client):
     assert [p["hour"] for p in r.json()["hourly_plan"]] == list(range(24))
 
 
-def test_infeasible_interpretation_is_relaxed_not_500(client):
-    body = copy.deepcopy(CASES[4]["input"])
+def _t11_body():
+    """SAMPLE-01 hours; hour 18 has demand 205, solar 0, so grid >= 205 - 50 = 155 no matter what."""
+    body = copy.deepcopy(CASES[0]["input"])
+    body["scenario_id"] = "T11"
+    body["operator_notes"] = ["Grid import must be zero from 6 PM to 7 PM."]
+    body["battery"] = {"capacity_kwh": 220, "initial_energy_kwh": 110, "minimum_energy_kwh": 40,
+                       "max_charge_kwh_per_hour": 50, "max_discharge_kwh_per_hour": 50}
+    return body
+
+
+def test_t11_unsatisfiable_grid_cap_returns_422_not_violated_plan(client):
     client.fake.canned = [{
         "note_index": 0, "applies": True, "directive_type": "max_grid_window",
-        "structured_adjustment": {"hours": list(range(24)), "max_grid_kwh": 0}, "explanation": "impossible",
+        "structured_adjustment": {"hours": [18], "max_grid_kwh": 0.0}, "explanation": "zero import at 18",
+    }]
+    r = client.post("/optimize-energy", json=_t11_body())
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["error"] == "infeasible_request"
+    assert "hour 18" in body["detail"] and "155" in body["detail"]
+    assert "hourly_plan" not in body and "Traceback" not in r.text
+
+
+def test_u03_reserve_above_capacity_returns_422(client):
+    body = _t11_body()
+    body["scenario_id"] = "U03"
+    body["operator_notes"] = ["Keep at least 500 kWh in the battery from 6 PM to 9 PM."]
+    client.fake.canned = [{
+        "note_index": 0, "applies": True, "directive_type": "minimum_battery_reserve",
+        "structured_adjustment": {"hours": [18, 19, 20], "minimum_energy_kwh": 500}, "explanation": "reserve",
     }]
     r = client.post("/optimize-energy", json=body)
-    assert r.status_code == 200
-    assert "relaxed" in r.json()["plan_summary"]
+    assert r.status_code == 422, r.text
+    assert r.json()["error"] == "infeasible_request"
+    assert "500" in r.json()["detail"] and "220" in r.json()["detail"]
+
+
+def test_infeasible_only_via_lp_interaction_returns_422(client):
+    """Each hour is fine on its own; the reserve plus the no-charge window make the LP infeasible."""
+    body = _t11_body()
+    body["scenario_id"] = "T11b"
+    body["operator_notes"] = ["a", "b"]
+    client.fake.canned = [
+        {"note_index": 0, "applies": True, "directive_type": "minimum_battery_reserve",
+         "structured_adjustment": {"hours": [1], "minimum_energy_kwh": 220}, "explanation": "full by hour 1"},
+        {"note_index": 1, "applies": True, "directive_type": "no_charge_window",
+         "structured_adjustment": {"hours": [0, 1]}, "explanation": "no charging"},
+    ]
+    r = client.post("/optimize-energy", json=body)
+    assert r.status_code == 422, r.text
+    assert r.json() == {"error": "infeasible_request",
+                        "detail": "the interpreted directives cannot all be satisfied by any 24-hour schedule"}
+
+
+def test_feasible_grid_cap_is_honoured(client):
+    """Same shape as T11 but with a cap the battery can actually meet: plan must respect it."""
+    client.fake.canned = [{
+        "note_index": 0, "applies": True, "directive_type": "max_grid_window",
+        "structured_adjustment": {"hours": [18], "max_grid_kwh": 160.0}, "explanation": "cap 160 at 18",
+    }]
+    r = client.post("/optimize-energy", json=_t11_body())
+    assert r.status_code == 200, r.text
+    assert r.json()["hourly_plan"][18]["grid_kwh"] <= 160.0 + 0.01
 
 
 def test_response_is_json_serialisable_numbers(client):

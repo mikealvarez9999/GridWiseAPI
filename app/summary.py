@@ -10,7 +10,7 @@ LABELS = {
 }
 
 
-def build_summary(directives: list[DirectiveInterpretation], plan: PlanResult, relaxed: list[str]) -> str:
+def build_summary(directives: list[DirectiveInterpretation], plan: PlanResult) -> str:
     applied = [LABELS[d.directive_type] for d in directives if d.directive_type != "no_op"]
     ignored = sum(1 for d in directives if d.directive_type == "no_op")
     charge_hours = [p.hour for p in plan.hourly_plan if p.battery_action == "charge"]
@@ -29,8 +29,6 @@ def build_summary(directives: list[DirectiveInterpretation], plan: PlanResult, r
         parts.append(f"discharges during high-tariff hours {_ranges(discharge_hours)}")
     parts.append("uses all available solar first and returns the battery to its initial level")
     text = "; ".join(parts) + f". Total grid cost {plan.total_cost_bdt:.2f} BDT, peak import {plan.peak_grid_kwh:.2f} kWh."
-    if relaxed:
-        text += " Note: the interpreted directives were mutually infeasible, so " + ", ".join(relaxed) + " were relaxed."
     return text
 
 

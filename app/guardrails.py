@@ -72,8 +72,9 @@ def validate_entry(raw: Any, note_count: int, battery: Battery) -> DirectiveInte
         clean["factor"] = round(factor, 6)
     elif dtype == "minimum_battery_reserve":
         reserve = _number(adj.get("minimum_energy_kwh"), "minimum_energy_kwh")
-        if reserve < 0 or reserve > battery.capacity_kwh:
-            raise GuardrailError("minimum_energy_kwh must be within [0, capacity]")
+        if reserve < 0:
+            raise GuardrailError("minimum_energy_kwh must be non-negative")
+        # A reserve above capacity is kept as stated: the feasibility check turns it into a 422.
         clean["minimum_energy_kwh"] = round(reserve, 6)
     elif dtype == "max_grid_window":
         cap = _number(adj.get("max_grid_kwh"), "max_grid_kwh")

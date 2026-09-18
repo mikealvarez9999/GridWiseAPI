@@ -49,9 +49,9 @@ A linear program over 72 variables (`solar_used`, `charge`, `discharge` per hour
 
 Post-processing nets simultaneous charge/discharge, rounds to 6 dp, recomputes `grid_kwh` from the rounded values so
 the energy balance holds exactly, replays the battery state, and computes the totals from the final `hourly_plan`.
-If the *interpreted* directives are mutually infeasible (only possible on a misread note; organizer scenarios are
-feasible), the service asks the LLM to re-check once, then relaxes directive types in a fixed order and says so in
-`plan_summary`, still returning HTTP 200.
+Every directive is a **hard** constraint. If the LP has no solution the request is refused with
+`422 {"error":"infeasible_request"}` (see [Infeasible requests](#infeasible-requests)); the service never returns a
+plan that violates its own `directive_interpretation`.
 
 ## Quickstart (local, from a clean machine)
 
@@ -112,9 +112,10 @@ curl -s http://localhost:8000/health
 `GET /health` → `200 {"status":"ok"}`
 
 `POST /optimize-energy` → request/response exactly as in the Problem Statement (Sections 07 and 10).
-Status codes: `200` success · `400` malformed JSON or structurally invalid body · `422` well-formed but impossible
-scenario (duplicate hours, reserve above capacity, infeasible even without directives) · `500` controlled internal
-error (`{"error":"internal_error"}`, no stack traces).
+Status codes: `200` success · `400` malformed JSON or structurally invalid body (`invalid_request`) · `422` well-formed
+but impossible: bad scenario such as duplicate hours or `battery.minimum_energy_kwh > capacity_kwh` (`invalid_scenario`),
+or operator directives that no 24-hour schedule can honour (`infeasible_request`) · `500` controlled internal error
+(`{"error":"internal_error"}`, no stack traces). Every error body is `{"error": "<code>", "detail": "<message>"}`.
 
 Example response fragment:
 ```json
@@ -133,11 +134,40 @@ Example response fragment:
 }
 ```
 
+### Infeasible requests
+
+The optimizer treats all five directive types as hard LP constraints and checks the solver status: `OPTIMAL` → `200`,
+`INFEASIBLE` → `422 infeasible_request` with **no plan** and a deterministic explanation where one can be proved per
+hour (`min_grid_h = max(0, demand_h − solar_h·factor_h − max_discharge_if_allowed) > cap_h`, or a reserve above capacity).
+Directives are never dropped, softened or clamped to make a plan appear.
+
+```bash
+# T11: hour 18 has demand 205 kWh, no solar and a 50 kWh/h discharge limit, so grid ≥ 155 kWh; a zero cap is impossible
+python3 - <<'PY' > /tmp/t11.json
+import json; c = json.load(open("samples/public_cases.json"))["cases"][0]["input"]
+c.update(scenario_id="T11", operator_notes=["Grid import must be zero from 6 PM to 7 PM."],
+         battery={"capacity_kwh": 220, "initial_energy_kwh": 110, "minimum_energy_kwh": 40,
+                  "max_charge_kwh_per_hour": 50, "max_discharge_kwh_per_hour": 50})
+print(json.dumps(c))
+PY
+curl -s -X POST http://localhost:8000/optimize-energy -H 'content-type: application/json' --data @/tmp/t11.json
+# 422 {"error":"infeasible_request","detail":"hour 18 needs at least 155 kWh from the grid (demand 205 - usable solar 0 - max discharge 50) but the grid-import cap is 0 kWh"}
+
+# U03: a reserve larger than the battery is reported as stated by the LLM, then refused (not clamped to capacity)
+sed 's/Grid import must be zero from 6 PM to 7 PM./Keep a reserve of at least 500 kWh in the battery from 6 PM to 9 PM./' /tmp/t11.json \
+  | curl -s -X POST http://localhost:8000/optimize-energy -H 'content-type: application/json' --data @-
+# 422 {"error":"infeasible_request","detail":"minimum_battery_reserve of 500 kWh at hour 18 exceeds the battery capacity of 220 kWh"}
+```
+
+When infeasibility only arises from interacting windows (each hour fine on its own), `detail` is the generic
+`"the interpreted directives cannot all be satisfied by any 24-hour schedule"`.
+
 ## Guardrails (Problem Statement §08)
 - `directive_type` must be one of the six allowed values; anything else is rejected and re-queried, then `no_op`.
 - `note_index` must cover `0..N-1` exactly once; duplicates are dropped, missing notes re-queried individually.
 - `hours`: integers 0–23, de-duplicated and sorted ascending; empty or out-of-range → rejected.
-- `factor ∈ [0,1]`; `minimum_energy_kwh ∈ [0, capacity]`; `max_grid_kwh ≥ 0`; all finite.
+- `factor ∈ [0,1]`; `minimum_energy_kwh ≥ 0`; `max_grid_kwh ≥ 0`; all finite. A reserve above capacity is kept as
+  stated (the prompt forbids clamping) and rejected by the feasibility check with `422 infeasible_request`.
 - `applies` is derived from the type (`no_op` → `false` + `null`, everything else → `true`); extra keys are stripped.
 - The final schedule is replayed in-process (`app/validator.py`) with the same rules the judge uses before it is returned.
 
@@ -157,6 +187,8 @@ secret. An external cron pinger calls `/health` every 5 minutes so the free inst
 - Free-tier Groq rate limits are the main throughput constraint; the key pool, per-model fallback chain and note cache mitigate bursts. Under sustained heavy load a note may fall back to `no_op` after the LLM budget is exhausted (logged, never a crash).
 - Overlapping directives of the same type are merged deterministically (solar factors multiply, reserves take the maximum, grid caps take the minimum, windows union).
 - Notes are interpreted for the single 24-hour horizon only; notes about other days are `no_op` by design.
+- Windows that cross midnight ("11 PM to 1 AM") map to `[0, 23]`. A reversed window that does not cross midnight
+  ("4 PM to 2 PM") is ambiguous; the safe outcome is `no_op`, but the LLM may also pick one of the two readings.
 
 ## Dependencies / credits
 FastAPI, Uvicorn, Pydantic v2, SciPy (HiGHS LP solver), NumPy, `openai` Python SDK (used against Groq's OpenAI-compatible endpoint), httpx, pytest.
