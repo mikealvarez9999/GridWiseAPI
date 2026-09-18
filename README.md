@@ -4,7 +4,7 @@ LLM-assisted 24-hour campus energy scheduler for the BUP CSE Fest 2026 Hackathon
 One HTTP service that reads operator notes with a language model, validates the interpretation deterministically,
 solves a cost-minimizing linear program under battery/solar/grid rules, and returns a judge-replayable plan.
 
-- **Live endpoint:** `https://<RENDER_URL>` (filled in at submission)
+- **Live endpoint:** `https://gridwise-api-0ucv.onrender.com` (Render, Singapore) — `GET /health`, `POST /optimize-energy`
 - **Docker fallback image:** `ghcr.io/mikealvarez9999/gridwiseapi:latest` (digest listed below)
 - **Endpoints:** `GET /health`, `POST /optimize-energy`
 
@@ -150,7 +150,7 @@ uv run python scripts/load_test.py --base-url http://localhost:8000 --concurrenc
 `notebooks/colab_test.ipynb` runs the same public-sample check inside Google Colab.
 
 ## Deployment
-Render web service (Docker runtime, Singapore region) defined in `render.yaml`; `GROQ_API_KEYS` is set as a Render
+Render web service `https://gridwise-api-0ucv.onrender.com` (Docker runtime, Singapore region) defined in `render.yaml`; `GROQ_API_KEYS` is set as a Render
 secret. An external cron pinger calls `/health` every 5 minutes so the free instance never idles during evaluation.
 
 ## Known limitations
