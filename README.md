@@ -34,7 +34,7 @@ that note falls back to `no_op` (safe failure) and the request still succeeds.
 |---|---|
 | Provider | Groq (OpenAI-compatible API, `https://api.groq.com/openai/v1`) |
 | Primary model | `openai/gpt-oss-120b` (`reasoning_effort=low`, `temperature=0`, JSON-schema structured output) |
-| Fallback models | `openai/gpt-oss-20b`, then `llama-3.3-70b-versatile` (only when every key is rate-limited/unavailable for the model above) |
+| Fallback models | `openai/gpt-oss-20b`, then `qwen/qwen3.8-27b` (only when every key is rate-limited/unavailable for the model above) |
 | Keys | Several free-tier keys rotate round-robin; a key hit by HTTP 429 is cooled down for `retry-after` seconds |
 | Caching | Validated interpretations are cached per (normalized note text, battery capacity) to cut latency and quota use on repeated notes |
 
@@ -84,7 +84,7 @@ uv run python scripts/run_public_samples.py --base-url http://localhost:8000
 |---|---|---|---|
 | `GROQ_API_KEYS` | yes | – | Comma-separated Groq API keys (`GROQ_API_KEY` with a single key also works) |
 | `GROQ_MODEL` | no | `openai/gpt-oss-120b` | Primary interpretation model |
-| `GROQ_FALLBACK_MODELS` | no | `openai/gpt-oss-20b,llama-3.3-70b-versatile` | Fallback chain |
+| `GROQ_FALLBACK_MODELS` | no | `openai/gpt-oss-20b,qwen/qwen3.8-27b` | Fallback chain |
 | `GROQ_REASONING_EFFORT` | no | `low` | gpt-oss reasoning effort (`low`/`medium`/`high`) |
 | `LLM_TIMEOUT_S` | no | `10` | Per LLM call timeout |
 | `REQUEST_BUDGET_S` | no | `25` | Whole-request LLM budget (judge timeout is 30 s) |

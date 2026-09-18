@@ -43,7 +43,7 @@ def load_settings() -> Settings:
         groq_base_url=os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
         groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
         groq_fallback_models=_split(
-            os.getenv("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,llama-3.3-70b-versatile")
+            os.getenv("GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,qwen/qwen3.8-27b")
         ),
         groq_reasoning_effort=os.getenv("GROQ_REASONING_EFFORT", "low"),
         llm_timeout_s=float(os.getenv("LLM_TIMEOUT_S", "10")),

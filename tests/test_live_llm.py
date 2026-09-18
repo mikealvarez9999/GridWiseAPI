@@ -20,7 +20,7 @@ CASES = load_public_cases()
 BANK = json.loads((Path(__file__).resolve().parents[1] / "scripts" / "paraphrase_bank.json").read_text())
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def interp():
     return Interpreter(load_settings())
 

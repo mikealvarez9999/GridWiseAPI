@@ -28,14 +28,25 @@ async def main() -> None:
     ap.add_argument("--base-url", default="http://localhost:8000")
     ap.add_argument("--concurrency", type=int, default=5)
     ap.add_argument("--rounds", type=int, default=2)
+    ap.add_argument("--fresh-notes", action="store_true",
+                    help="use distinct paraphrase-bank notes per request so the interpretation cache cannot help")
     args = ap.parse_args()
 
     cases = json.loads((ROOT / "samples" / "public_cases.json").read_text())["cases"]
+    payloads = [c["input"] for c in cases]
+    if args.fresh_notes:
+        bank = json.loads((ROOT / "scripts" / "paraphrase_bank.json").read_text())["cases"]
+        payloads = []
+        for i in range(args.concurrency * args.rounds):
+            p = dict(cases[i % len(cases)]["input"])
+            p["operator_notes"] = [bank[(2 * i) % len(bank)]["note"], bank[(2 * i + 1) % len(bank)]["note"]]
+            p["scenario_id"] = f"LOAD-{i:03d}"
+            payloads.append(p)
     url = args.base_url.rstrip("/") + "/optimize-energy"
     results: list[tuple[float, int]] = []
     async with httpx.AsyncClient(timeout=40) as client:
         for rnd in range(args.rounds):
-            batch = [one(client, url, cases[(rnd * args.concurrency + i) % len(cases)]["input"]) for i in range(args.concurrency)]
+            batch = [one(client, url, payloads[(rnd * args.concurrency + i) % len(payloads)]) for i in range(args.concurrency)]
             results += await asyncio.gather(*batch)
     lat = sorted(t for t, _ in results)
     codes = [c for _, c in results]

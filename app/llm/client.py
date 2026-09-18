@@ -61,48 +61,70 @@ class LLMClient:
         if not self._clients:
             raise LLMUnavailable("no API keys configured")
         last_error: str = "unknown"
-        for model in self.models:
-            tried: set[int] = set()
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining < 1.5:
-                    raise LLMUnavailable(f"request budget exhausted ({last_error})")
-                key_idx = await self._pick_key(model, tried)
-                if key_idx is None:
-                    break
-                tried.add(key_idx)
-                timeout = min(self.settings.llm_timeout_s, remaining - 0.5)
-                use_schema = model not in self._schema_unsupported
-                try:
-                    content = await self._call(key_idx, model, system, user, schema, reasoning_effort, timeout, use_schema)
-                    return _parse_json(content)
-                except openai.BadRequestError as e:
-                    msg = str(e)
-                    if use_schema and ("response_format" in msg or "json_schema" in msg or "schema" in msg):
-                        log.warning("model %s rejected json_schema; falling back to json_object", model)
-                        self._schema_unsupported.add(model)
-                        tried.discard(key_idx)
-                        continue
-                    last_error = f"bad request on {model}: {_redact(msg)}"
-                    log.warning(last_error)
-                    break  # a prompt/format problem will not be fixed by another key
-                except openai.RateLimitError as e:
-                    wait = _retry_after(e) or 20.0
-                    self._cool(key_idx, model, wait)
-                    last_error = f"429 on {model} (key #{key_idx}, cool {wait:.0f}s)"
-                    log.warning(last_error)
-                except openai.AuthenticationError:
-                    self._cool(key_idx, model, 3600)
-                    last_error = f"auth failure on key #{key_idx}"
-                    log.error(last_error)
-                except (openai.APITimeoutError, openai.APIConnectionError, openai.APIStatusError) as e:
-                    self._cool(key_idx, model, 5.0)
-                    last_error = f"{type(e).__name__} on {model}"
-                    log.warning(last_error)
-                except (json.JSONDecodeError, ValueError) as e:
-                    last_error = f"unparseable output from {model}: {e}"
-                    log.warning(last_error)
+        for sweep in range(4):
+            for model in self.models:
+                tried: set[int] = set()
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining < 1.5:
+                        raise LLMUnavailable(f"request budget exhausted ({last_error})")
+                    key_idx = await self._pick_key(model, tried)
+                    if key_idx is None:
+                        break
+                    tried.add(key_idx)
+                    timeout = min(self.settings.llm_timeout_s, remaining - 0.5)
+                    use_schema = model not in self._schema_unsupported
+                    try:
+                        content = await self._call(key_idx, model, system, user, schema, reasoning_effort, timeout, use_schema)
+                        return _parse_json(content)
+                    except openai.BadRequestError as e:
+                        msg = str(e)
+                        if use_schema and ("response_format" in msg or "json_schema" in msg or "schema" in msg):
+                            log.warning("model %s rejected json_schema; falling back to json_object", model)
+                            self._schema_unsupported.add(model)
+                            tried.discard(key_idx)
+                            continue
+                        last_error = f"bad request on {model}: {_redact(msg)}"
+                        log.warning(last_error)
+                        break  # a prompt/format problem will not be fixed by another key
+                    except openai.RateLimitError as e:
+                        wait = _retry_after(e) or 20.0
+                        self._cool(key_idx, model, wait)
+                        last_error = f"429 on {model} (key #{key_idx}, cool {wait:.0f}s)"
+                        log.warning(last_error)
+                    except openai.AuthenticationError:
+                        self._cool(key_idx, model, 3600)
+                        last_error = f"auth failure on key #{key_idx}"
+                        log.error(last_error)
+                    except openai.NotFoundError:
+                        self._cool(key_idx, model, 3600)
+                        last_error = f"model {model} not found"
+                        log.error(last_error)
+                        break
+                    except (openai.APITimeoutError, openai.APIConnectionError, openai.APIStatusError) as e:
+                        self._cool(key_idx, model, 5.0)
+                        last_error = f"{type(e).__name__} on {model}"
+                        log.warning(last_error)
+                    except (json.JSONDecodeError, ValueError) as e:
+                        last_error = f"unparseable output from {model}: {e}"
+                        log.warning(last_error)
+            # Every key/model pair is cooling down: wait for the earliest one if the budget allows.
+            wait = self._earliest_cooldown()
+            remaining = deadline - time.monotonic()
+            if wait is None or wait + 3.0 > remaining:
+                break
+            log.warning("all keys/models cooling; waiting %.1fs (sweep %d)", wait, sweep + 1)
+            await asyncio.sleep(wait + 0.2)
         raise LLMUnavailable(last_error)
+
+    def _earliest_cooldown(self) -> float | None:
+        now = time.monotonic()
+        waits = [
+            until - now
+            for (i, m), until in self._cooldown.items()
+            if m in self.models and until > now and until - now < 600
+        ]
+        return min(waits) if waits else None
 
     async def _call(self, key_idx, model, system, user, schema, reasoning_effort, timeout, use_schema) -> str:
         kwargs: dict[str, Any] = {
