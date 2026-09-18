@@ -7,3 +7,4 @@ __pycache__/
 !.env.example
 *.log
 .ipynb_checkpoints/
+video_script.txt
