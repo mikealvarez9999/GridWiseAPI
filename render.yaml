@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: gridwise-api
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEYS
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_FALLBACK_MODELS
+        value: openai/gpt-oss-20b,llama-3.3-70b-versatile
+      - key: GROQ_REASONING_EFFORT
+        value: low
+      - key: LLM_TIMEOUT_S
+        value: "10"
+      - key: REQUEST_BUDGET_S
+        value: "25"
